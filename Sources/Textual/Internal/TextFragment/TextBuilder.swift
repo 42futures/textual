@@ -96,9 +96,7 @@ extension Text {
       return text
     }
 
-    self = textValues.reduce(Text(verbatim: "")) { partialResult, text in
-      Text("\(partialResult)\(text)")
-    }
+    self = textValues.balancedConcatenation()
   }
 
   private init(placeholderSize size: CGSize) {
@@ -127,6 +125,26 @@ extension AttributedStringProtocol {
       },
       uniquingKeysWith: { existing, _ in existing }
     )
+  }
+}
+
+// Concatenate Text views using a balanced binary tree to keep the nesting
+// depth at O(log N). A linear reduce creates O(N) depth, which causes
+// a stack overflow in SwiftUI's recursive Text.resolve() for long runs
+// (e.g. syntax-highlighted code blocks with hundreds of tokens).
+extension Array where Element == Text {
+  fileprivate func balancedConcatenation() -> Text {
+    switch count {
+    case 0:
+      return Text(verbatim: "")
+    case 1:
+      return self[0]
+    default:
+      let mid = count / 2
+      let lhs = Array(self[..<mid]).balancedConcatenation()
+      let rhs = Array(self[mid...]).balancedConcatenation()
+      return Text("\(lhs)\(rhs)")
+    }
   }
 }
 

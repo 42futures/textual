@@ -29,13 +29,13 @@ struct HighlightedTextFragment: View {
   }
 
   var body: some View {
+    // Convert to an owned String before the async boundary
+    let code = String(content.characters[...])
+
     TextFragment(model.highlightedCode ?? AttributedString(content))
       .foregroundStyle(theme.foregroundColor)
-      .task(id: content) {
-        await model.tokenize(
-          content: content,
-          languageHint: languageHint
-        )
+      .task(id: code) {
+        await model.tokenize(code: code, languageHint: languageHint, theme: theme)
       }
       .onChange(of: Tuple(model.tokens, textEnvironment)) { _, newValue in
         model.highlight(
@@ -53,11 +53,12 @@ extension HighlightedTextFragment {
     var tokens: [CodeToken] = []
     var highlightedCode: AttributedString?
 
-    func tokenize(content: AttributedSubstring, languageHint: String?) async {
-      let code = String(content.characters[...])
+    func tokenize(code: String, languageHint: String?, theme: StructuredText.HighlighterTheme) async {
       tokens = [CodeToken(content: code, type: .plain)]
 
-      if let tokenizer = CodeTokenizer.shared, let languageHint {
+      // Skip the expensive tokenizer when the theme has no token properties
+      if !theme.tokenProperties.isEmpty,
+         let tokenizer = CodeTokenizer.shared, let languageHint {
         tokens = await tokenizer.tokenize(code: code, language: languageHint)
       }
     }
