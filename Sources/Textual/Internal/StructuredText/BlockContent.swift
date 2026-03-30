@@ -15,7 +15,7 @@ extension StructuredText {
 
       BlockVStack {
         ForEach(runs, id: \.stableID) { run in
-          Block(intent: run.intent, content: content[run.range])
+          EquatableView(content: Block(intent: run.intent, content: content[run.range]))
         }
       }
     }
@@ -23,13 +23,19 @@ extension StructuredText {
 }
 
 extension StructuredText {
-  struct Block: View {
+  struct Block: View, Equatable {
     private let intent: PresentationIntent.IntentType?
     private let content: AttributedSubstring
 
     init(intent: PresentationIntent.IntentType?, content: AttributedSubstring) {
       self.intent = intent
       self.content = content
+    }
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+      lhs.intent == rhs.intent
+        && lhs.content.runs.count == rhs.content.runs.count
+        && AttributedString(lhs.content) == AttributedString(rhs.content)
     }
 
     var body: some View {

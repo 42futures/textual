@@ -47,6 +47,9 @@ extension WithAttachments {
   @MainActor @Observable final class Model {
     var resolvedAttributedString: AttributedString?
 
+    /// Caches previously resolved attachments by URL to avoid redundant loads during streaming.
+    private var attachmentCache: [URL: AnyAttachment] = [:]
+
     func resolveAttachments(
       in attributedString: AttributedString,
       imageAttachmentLoader: any AttachmentLoader,
@@ -60,36 +63,50 @@ extension WithAttachments {
       var attachments: [AnyAttachment] = []
       var ranges: [Range<AttributedString.Index>] = []
 
-      await withTaskGroup(
-        of: (AnyAttachment?, Range<AttributedString.Index>).self
-      ) { group in
-        for run in attributedString.runs {
-          if let imageURL = run.imageURL {
-            group.addTask {
-              let attachment = try? await imageAttachmentLoader.attachment(
-                for: imageURL,
-                text: String(attributedString[run.range].characters[...]),
-                environment: environment
-              )
-              return (attachment.map(AnyAttachment.init), run.range)
-            }
-          } else if let emojiURL = run.textual.emojiURL {
-            group.addTask {
-              let attachment = try? await emojiAttachmentLoader.attachment(
-                for: emojiURL,
-                text: String(attributedString[run.range].characters[...]),
-                environment: environment
-              )
-              return (attachment.map(AnyAttachment.init), run.range)
-            }
+      // Apply cached attachments immediately; collect uncached URLs for async loading
+      var uncachedRuns: [(url: URL, isEmoji: Bool, range: Range<AttributedString.Index>)] = []
+
+      for run in attributedString.runs {
+        if let imageURL = run.imageURL {
+          if let cached = attachmentCache[imageURL] {
+            attachments.append(cached)
+            ranges.append(run.range)
+          } else {
+            uncachedRuns.append((url: imageURL, isEmoji: false, range: run.range))
+          }
+        } else if let emojiURL = run.textual.emojiURL {
+          if let cached = attachmentCache[emojiURL] {
+            attachments.append(cached)
+            ranges.append(run.range)
+          } else {
+            uncachedRuns.append((url: emojiURL, isEmoji: true, range: run.range))
           }
         }
+      }
 
-        for await (attachment, range) in group {
-          guard let attachment else { continue }
+      if !uncachedRuns.isEmpty {
+        await withTaskGroup(
+          of: (URL, AnyAttachment?, Range<AttributedString.Index>).self
+        ) { group in
+          for item in uncachedRuns {
+            let loader = item.isEmoji ? emojiAttachmentLoader : imageAttachmentLoader
+            group.addTask {
+              let attachment = try? await loader.attachment(
+                for: item.url,
+                text: String(attributedString[item.range].characters[...]),
+                environment: environment
+              )
+              return (item.url, attachment.map(AnyAttachment.init), item.range)
+            }
+          }
 
-          attachments.append(attachment)
-          ranges.append(range)
+          for await (url, attachment, range) in group {
+            guard let attachment else { continue }
+
+            attachmentCache[url] = attachment
+            attachments.append(attachment)
+            ranges.append(range)
+          }
         }
       }
 

@@ -103,6 +103,7 @@ import SwiftUI
 /// ``MarkupParser`` implementation.
 public struct StructuredText: View {
   @State private var attributedString = AttributedString()
+  @State private var parseTask: Task<Void, Never>?
 
   private let markup: String
   private let parser: any MarkupParser
@@ -123,14 +124,25 @@ public struct StructuredText: View {
     }
     .coordinateSpace(.textContainer)
     .onChange(of: markup, initial: true) {
-      markupDidChange(markup)
+      markupDidChange(markup, debounce: attributedString.characters.count > 0)
     }
     // Disable line limit to avoid per-fragment truncation
     .lineLimit(nil)
   }
 
-  private func markupDidChange(_ markup: String) {
-    self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+  private func markupDidChange(_ markup: String, debounce: Bool) {
+    parseTask?.cancel()
+
+    if debounce {
+      let parser = self.parser
+      parseTask = Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(50))
+        guard !Task.isCancelled else { return }
+        self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+      }
+    } else {
+      self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+    }
   }
 }
 
