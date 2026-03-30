@@ -17,9 +17,7 @@ extension StructuredText {
       let runs = content.blockRuns(parent: intent)
 
       BlockVStack {
-        ForEach(runs.indices, id: \.self) { index in
-          let run = runs[index]
-
+        ForEach(runs, id: \.stableID) { run in
           UnorderedListItem(
             intent: run.intent,
             content: content[run.range]

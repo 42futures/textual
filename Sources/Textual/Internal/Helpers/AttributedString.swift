@@ -71,11 +71,16 @@ extension AttributedString {
     struct BlockRun: Sendable {
       let intent: PresentationIntent.IntentType?
       let range: Range<AttributedString.Index>
+
+      /// A stable identifier derived from the `PresentationIntent` component's identity.
+      /// Falls back to positional index when the intent is nil (e.g. raw HTML blocks).
+      let stableID: Int
     }
 
     private struct Boundary: Equatable {
       let index: AttributedString.Runs.Index
       let intent: PresentationIntent.IntentType?
+      let stableID: Int
     }
 
     typealias Element = BlockRun
@@ -92,13 +97,16 @@ extension AttributedString {
 
       var boundaries: [Boundary] = []
       var lastIntent: PresentationIntent.IntentType?
+      var fallbackID = Int.min
 
       for index in runs.indices {
         let intent = runs[index].presentationIntent?.intent(before: parent)
 
         // Record first run or whenever the intent changes (including nil values)
         if boundaries.isEmpty || intent != lastIntent {
-          boundaries.append(.init(index: index, intent: intent))
+          let stableID = intent?.identity ?? fallbackID
+          if intent == nil { fallbackID += 1 }
+          boundaries.append(.init(index: index, intent: intent, stableID: stableID))
           lastIntent = intent
         }
       }
@@ -127,7 +135,7 @@ extension AttributedString {
       let lowerBound = runs[boundary.index].range.lowerBound
       let upperBound = runs[lastRunIndex].range.upperBound
 
-      return BlockRun(intent: boundary.intent, range: lowerBound..<upperBound)
+      return BlockRun(intent: boundary.intent, range: lowerBound..<upperBound, stableID: boundary.stableID)
     }
   }
 }

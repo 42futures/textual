@@ -45,14 +45,12 @@ extension StructuredText {
       let rowRuns = content.blockRuns(parent: intent)
 
       Grid(horizontalSpacing: spacing.horizontal, verticalSpacing: spacing.vertical) {
-        ForEach(rowRuns.indices, id: \.self) { rowIndex in
-          let rowRun = rowRuns[rowIndex]
+        ForEach(Array(rowRuns.enumerated()), id: \.element.stableID) { rowIndex, rowRun in
           let rowContent = content[rowRun.range]
           let columnRuns = rowContent.blockRuns(parent: rowRun.intent)
 
           GridRow {
-            ForEach(columnRuns.indices, id: \.self) { columnIndex in
-              let cellRun = columnRuns[columnIndex]
+            ForEach(Array(columnRuns.enumerated()), id: \.element.stableID) { columnIndex, cellRun in
               let cellContent = rowContent[cellRun.range]
 
               TableCell(cellContent, row: rowIndex, column: columnIndex)
