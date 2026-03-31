@@ -35,7 +35,7 @@ extension StructuredText {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
       lhs.intent == rhs.intent
         && lhs.content.runs.count == rhs.content.runs.count
-        && AttributedString(lhs.content) == AttributedString(rhs.content)
+        && String(lhs.content.characters[...]) == String(rhs.content.characters[...])
     }
 
     var body: some View {

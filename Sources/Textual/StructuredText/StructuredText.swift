@@ -103,7 +103,7 @@ import SwiftUI
 /// ``MarkupParser`` implementation.
 public struct StructuredText: View {
   @State private var attributedString = AttributedString()
-  @State private var parseTask: Task<Void, Never>?
+  @State private var parseState = ParseState()
 
   private let markup: String
   private let parser: any MarkupParser
@@ -124,24 +124,47 @@ public struct StructuredText: View {
     }
     .coordinateSpace(.textContainer)
     .onChange(of: markup, initial: true) {
-      markupDidChange(markup, debounce: attributedString.characters.count > 0)
+      markupDidChange(markup, debounce: parseState.previousMarkup != nil)
     }
     // Disable line limit to avoid per-fragment truncation
     .lineLimit(nil)
   }
 
   private func markupDidChange(_ markup: String, debounce: Bool) {
-    parseTask?.cancel()
+    parseState.task?.cancel()
 
     if debounce {
       let parser = self.parser
-      parseTask = Task { @MainActor in
+      parseState.task = Task { @MainActor in
         try? await Task.sleep(for: .milliseconds(50))
         guard !Task.isCancelled else { return }
-        self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+        let result = parseState.parse(markup, using: parser)
+        guard !Task.isCancelled else { return }
+        self.attributedString = result
       }
     } else {
-      self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+      self.attributedString = parseState.parse(markup, using: parser)
+    }
+  }
+}
+
+extension StructuredText {
+  /// Tracks previous parse results to enable result reuse when markup hasn't changed.
+  @MainActor struct ParseState {
+    var task: Task<Void, Never>?
+    var previousMarkup: String?
+    var previousResult: AttributedString?
+
+    mutating func parse(_ markup: String, using parser: any MarkupParser) -> AttributedString {
+      // Skip re-parse if markup is identical (can happen with debounce)
+      if let previousMarkup, let previousResult, markup == previousMarkup {
+        return previousResult
+      }
+
+      let result = (try? parser.attributedString(for: markup)) ?? .init()
+      previousMarkup = markup
+      previousResult = result
+      return result
     }
   }
 }
